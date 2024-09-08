@@ -14,7 +14,7 @@ Ensure you have Python 3.6 or later installed on your machine. Clone the reposit
 git clone https://github.com/emaanh/BlitzGo.git
 
 # Navigate to the project directory
-cd NeuralEvolution
+cd BlitzGo
 
 # Install dependencies
 pip install -r requirements.txt
