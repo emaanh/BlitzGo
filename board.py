@@ -2,9 +2,17 @@
 from random import randint
 import numpy as np
 import matplotlib.pyplot as plt
-
+import time
+from collections import deque
 
 class Board:
+    
+    WALL_NORTH = 1 << 0  # Bit 0
+    WALL_SOUTH = 1 << 1  # Bit 1
+    WALL_WEST = 1 << 2   # Bit 2
+    WALL_EAST = 1 << 3   # Bit 3
+    LOOK_UP_MASK = 61440
+    
     def __init__(self,size):
         self.stones = [[None for _ in range(size)] for _ in range(size)]
         self.territory = [[None for _ in range(size)] for _ in range(size)]
@@ -25,11 +33,53 @@ class Board:
         self.tension_map = [[0 for _ in range(size)] for _ in range(size)]
         self.total_control = 0
         
+        self.method_times = {}      
 
+        # self.LOOKUP_TABLE = [self.hamming_weight(i) for i in range(16) > 2]
+        # self.LOOKUP_TABLE = [int(bin(i).count('1') > 2) for i in range(16)]
+        # self.count_bfs = 
+        self.search = []
+        self.search_num = 0
+        self.total_bfs = 0
+        self.heuristic_maps = self.create_heuristic_maps()
+        # Load the compiled shared library
+
+
+        
+        
+    def create_heuristic_maps(self):
+        """
+        Create a 3D NumPy array containing all 16 heuristic maps, 
+        one for each combination of excluded walls.
+        """
+        rows = self.size
+        cols = self.size
+
+        heuristic_maps = np.zeros((15, rows, cols), dtype=int) 
+
+        for exclude_walls in range(15):#2^n-1 because you cant have all 4 walls excluded.
+            distances = []
+
+            if not exclude_walls & self.WALL_NORTH:
+                distances.append(np.arange(rows).reshape(-1, 1))
+            if not exclude_walls & self.WALL_SOUTH:
+                distances.append(rows - 1 - np.arange(rows).reshape(-1, 1))
+            if not exclude_walls & self.WALL_WEST:
+                distances.append(np.arange(cols).reshape(1, -1))
+            if not exclude_walls & self.WALL_EAST:
+                distances.append(cols - 1 - np.arange(cols).reshape(1, -1))
+
+            distances = [d + np.zeros((rows, cols), dtype=int) for d in distances]
+
+            heuristic_maps[exclude_walls] = np.minimum.reduce(distances)
+
+        return heuristic_maps
+    
     def update_board_change(self, player, position, direction):
         self.incrementTerritory(player, direction)
-        self.update_maps(player, position, direction)
+        # self.update_maps(player, position, direction)
         
+
     def playerNumberID(self, player):
         for i in range(len(self.players)):
             if self.players[i] == player:
@@ -107,27 +157,51 @@ class Board:
         return False
     
     def placeStone(self, player, position):
+        start_time2 = time.time()
+        
         x, y = position   
         
+        start_time = time.time()
         if not self.isValidMove(position):
-            return 1 #for invalid move
+            # self.record_time("isValidMove", start_time)
+            return 1  # for invalid move
         
+        start_time = time.time()
         self.stones[y][x] = player 
         self.update_hash(position, None, player)
+        # self.record_time("update_hash", start_time)
 
+        start_time = time.time()
         if self.isDuplicateMove():
+            # self.record_time("isDuplicateMove", start_time)
+            
+            start_time = time.time()
             self.removeStone(position)
-            self.incrementTerritory(player, 1) #The issue is that remove stone removes a territory but we hadn't added it yet until duplicate check so we shall add the territory back now. 
-            return 2 #for duplicate move
+            # self.record_time("removeStone", start_time)
+            
+            start_time = time.time()
+            self.incrementTerritory(player, 1)  # Adjusting for duplicate check
+            # self.record_time("incrementTerritory", start_time)
+            
+            return 2  # for duplicate move
         
+        # self.record_time("isDuplicateMove", start_time)
+
+        start_time = time.time()
         self.update_board_change(player, position, 1)
-                   
-        captured = self.update_other_stones(player,position)
-           
+        # self.record_time("update_board_change", start_time)
+
+        # start_time = time.time()
+        captured = self.update_other_stones(player, position)
+        # self.record_time("update_other_stones", start_time)
+
+        start_time = time.time()
         self.move_history.append(position) 
-        return 0 # for successful move.
+        # self.record_time("move_history.append", start_time)
         
-        # print("Size of set: ",deep_getsizeof(self.board_set)/1000, "KB")
+        # self.record_time("TOTAL PLACE STONE", start_time2)
+        
+        return 0  # for successful move
                 
                 
     #edge_case check
@@ -142,11 +216,16 @@ class Board:
 
     def update_other_stones(self, player, position):
         
+        start_time = time.time()        
         captured = self.update_territories_and_remove_inside_stones(player, position) 
         penetrated = False
+        # self.record_time("update_territories_and_remove_inside_stones", start_time)
         
         if captured:
+            start_time = time.time()        
+
             penetrated = self.bfs_update_opponent_territory(player, position) 
+            # self.record_time("bfs_update_opponent_territory", start_time)
             
         if penetrated or self.double_suicide(player, position):
             self.board_set.add(self.intermediateHash)
@@ -188,7 +267,11 @@ class Board:
         for dx, dy in directions:
             nx, ny = position[0] + dx, position[1] + dy
             if self.is_within_bounds((nx, ny)) and self.stones[ny][nx] != player and (nx,ny) not in totalVisited:
-                enclosed_territory = self.bfs_enclosed_territory(player, (nx, ny), totalVisited)
+                start_time = time.time()  
+                enclosed_territory = self.dfs_enclosed_territory(player, (nx, ny), totalVisited)
+                # self.record_time("bfs_enclosed_territory", start_time)
+                
+                start_time = time.time()  
                 if enclosed_territory:
                     for (tx, ty) in enclosed_territory:
                         if self.territory[ty][tx] != player:
@@ -200,12 +283,15 @@ class Board:
                         if self.stones[ty][tx] != None and self.stones[ty][tx] != player:
                             self.removeStone((tx, ty))
                             captured = True
+                            
+                # self.record_time("enclosed_territory", start_time)
 
         return captured
     
     def bfs_update_opponent_territory(self, player, start):
         anyUpdated = False
         queue = [start]        
+        queue = deque([start])
         x,y = start
         
         #check at start position
@@ -215,7 +301,7 @@ class Board:
             anyUpdated = True
             
         while queue:
-            x, y = queue.pop(0)
+            x, y = queue.popleft()
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  
                 nx, ny = x + dx, y + dy
                 
@@ -227,42 +313,42 @@ class Board:
                     
         return anyUpdated
 
-
-    def bfs_enclosed_territory(self, player, start, totalVisited: set):
+        
+    def dfs_enclosed_territory(self, player, start, totalVisited: set):
         queue = [start]
         totalVisited.add(start)
-        walls_touched = set()
         visited = set(queue)
+        walls_touched = 0
+        # result = self.my_lib.sqrt(9.0)
 
         while queue:
-            x, y = queue.pop(0)
+            x, y = queue.pop()
+            
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  
+                
+        # # Call the function
+                
+        # print(f"Result: {result}")
                 nx, ny = x + dx, y + dy
                 
-                boolTouchWall = False
-                if ny < 0:
-                    walls_touched.add('north')
-                    boolTouchWall = True
-                if ny >= self.size:
-                    walls_touched.add('south')
-                    boolTouchWall = True
-                if nx < 0:
-                    walls_touched.add('west')
-                    boolTouchWall = True
-                if nx >= self.size:
-                    walls_touched.add('east')
-                    boolTouchWall = True    
-                               
+                if (nx, ny) in visited:
+                    continue  
                 
-                if len(walls_touched)>2:
-                    return None
-                if boolTouchWall or (nx, ny) in visited:
-                    continue
-
-                if (nx, ny) not in visited and self.stones[ny][nx] != player:                    
-                    queue.append((nx, ny))
-                    totalVisited.add((nx, ny))
-                    visited.add((nx, ny))
+                if ny < 0:
+                    walls_touched |= self.WALL_NORTH
+                elif ny >= self.size:
+                    walls_touched |= self.WALL_SOUTH
+                elif nx < 0:
+                    walls_touched |= self.WALL_WEST
+                elif nx >= self.size:
+                    walls_touched |= self.WALL_EAST
+                else:
+                    if self.stones[ny][nx] != player:
+                        queue.append((nx, ny))
+                        totalVisited.add((nx, ny))
+                        visited.add((nx, ny))                
+            if self.LOOK_UP_MASK & (1 << walls_touched):
+                return None
                     
         return visited  
     
@@ -314,152 +400,6 @@ class Board:
             print(f"{player.name}'s territory: ", self.territory_counts[player])
             
         print("Total: ", self.total_territory_count)
-    
-    
-    
-    #Anything to do with AI move generation:
-    def generateValidMoves_old(self, player, num_moves_considered):
-        move_scores = {}  # Dictionary to store moves and their scores
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, 1), (1, -1), (1, 1), (-1, -1)]  # All 8 directions
-        
-        for y in range(self.size):
-            for x in range(self.size):
-                if self.stones[y][x] is not None:  # Only check from occupied cells
-
-                    for dx, dy in directions:
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < self.size and 0 <= ny < self.size:  # Ensure within bounds
-                            if self.stones[ny][nx] is None:  # Check if the adjacent cell is empty
-                                
-                                new_hash = self.current_hash^ self.zobrist_table[ny][nx][self.player_to_state(player)]
-                                
-                                if new_hash not in self.board_set:
-                                    
-                                    if (nx, ny) not in move_scores:
-                                        move_scores[(nx, ny)] = 1
-                                    else:
-                                        move_scores[(nx, ny)] += 1  # Increment score for each adjacent stone
-
-        # Sort the moves by their scores in descending order and get the top 20
-        sorted_moves = sorted(move_scores.items(), key=lambda item: item[1], reverse=True)
-        top_moves = [move for move, score in sorted_moves[:num_moves_considered]]  
-        if not top_moves:
-            x = randint(1,self.size-2)
-            y = randint(1,self.size-2)
-            top_moves.append((x,y))
-        return top_moves  # Returns a list of positions
-    
-    def generateValidMoves(self, player, num_moves_considered):
-        move_scores = {}  # Dictionary to store moves and their scores
-        
-        for y in range(self.size):
-            for x in range(self.size):
-                if self.stones[y][x] is None:  # Only check from occupied cells
-                    new_hash = self.current_hash^ self.zobrist_table[y][x][self.player_to_state(player)]
-                    if new_hash not in self.board_set:  
-                        
-                        if self.territory[y][x] != None and self.territory[y][x] != player:
-                            countCorner = 0
-                            for dx, dy in [(1, 1), (1, -1), (-1, 1), (-1, -1)]:  
-                                nx, ny = x + dx, y + dy
-                                if self.is_within_bounds((nx,ny)) and self.stones[ny][nx] == player:
-                                    countCorner +=1
-                            if countCorner >=2:
-                                move_scores[(x, y)] = self.tension_map[y][x]
-                                
-                        elif self.tension_map[y][x]>0: 
-                            move_scores[(x, y)] = self.tension_map[y][x]
-
-        # Sort the moves by their scores in descending order and get the top 20
-        sorted_moves = sorted(move_scores.items(), key=lambda item: item[1], reverse=True)
-        top_moves = [move for move, score in sorted_moves[:num_moves_considered]]  
-        
-        if not top_moves:
-            x = randint(1,self.size-2)
-            y = randint(1,self.size-2)
-            print("random: ", (x,y))
-            print(self.tension_map[y][x])
-            top_moves.append((x,y))
-            
-        # print(top_moves)
-        return top_moves  # Returns a list of positions
-    
-    
-    
-    #ANYTHING TO DO WITH PRINTING OR HASHING    
-    
-    def original_hash_board(self):
-        return tuple(tuple(row) for row in self.stones)
-    
-    def __str__(self):
-        board_str = "  " + ''.join([str(i + 1).rjust(2) for i in range(self.size)]) + "\n"  # Adding column headers
-        for index, row in enumerate(self.stones):
-            row_str = str(index + 1).rjust(2) + ' '  # Adding row numbers
-            row_str += ' '.join(['.' if player is None else player.symbol for player in row])
-            board_str += row_str + "\n"
-        return board_str
-        
-    def flattenBoard(self):
-        flattenList = [0 for x in range(self.size_2)]
-        for y in range(self.size):
-            for x in range(self.size):
-                if self.stones[y][x] == None:
-                    if self.territory[y][x] == None:
-                        pass
-                    else:
-                        flattenList[y*self.size + x] = self.territory[y][x].getTerritoryCode()
-                else:
-                    flattenList[y*self.size + x] = self.stones[y][x].getStoneCode()
-                    
-        return flattenList
-    
-    def TerritoryBoard(self):
-        board_str = "  " + ''.join([str(i + 1).rjust(2) for i in range(self.size)]) + "\n"  # Adding column headers
-        for index, row in enumerate(self.territory):
-            row_str = str(index + 1).rjust(2) + ' '  # Adding row numbers
-            row_str += ' '.join(['.' if stone is None else stone.symbol for stone in row])
-            board_str += row_str + "\n"
-        return board_str  
-    
-    #Anything to do with MAPS/FIELDS
-    def eval(self):
-        return self.total_control
-                
-    def update_other_maps_at_position(self, position):
-        x,y = position
-        self.tension_map[y][x] = self.vector_gravity_map[y][x][0] * self.vector_gravity_map[y][x][1]
-        old_control_val = self.control_map[y][x]
-        new_control_val = self.vector_gravity_map[y][x][0]* -1 + self.vector_gravity_map[y][x][1]
-        self.control_map[y][x] = new_control_val
-        
-        self.total_control += new_control_val-old_control_val
-    
-    def update_maps(self, player, position, direction):
-        queue = [(position, 1)] #distance from source
-        x,y = position
-        index_of_color = (0 if player.isBlack else 1) #black 0, white 1, black -1, white 1
-        visited = set()
-        
-        self.vector_gravity_map[y][x][index_of_color] += direction #distance 1 away. #direction times 1 over distance squared
-        self.update_other_maps_at_position(position)
- 
-
-        while(queue):
-            position, distance = queue.pop(0)
-            x,y = position
-            
-            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]:  
-                nx, ny = x + dx, y + dy
-                n_pos = (nx,ny)
-                
-                if self.is_within_bounds(n_pos) and n_pos not in visited:
-                    
-                    visited.add(n_pos)
-                    queue.append((n_pos, distance+1))
-                    
-                    self.vector_gravity_map[ny][nx][index_of_color] += direction*(1/(distance**2))
-                    self.update_other_maps_at_position(n_pos)
-
 
 
         

@@ -35,11 +35,12 @@ def main(size, sleep=0, print_ = True, moves_list=None):
     game = Game(size)
     
     # game.addPlayer(MiniMax(5, 10))
-    game.addPlayer(MiniMax(5, 12))
+    # game.addPlayer(User())
+    # game.addPlayer(User())
     
     
-    game.addPlayer(MiniMax_Control(5,12))
-    print("Is Control Black?", game.players[1].isBlack)
+    # game.addPlayer(MiniMax_Control(5,12))
+    # print("Is Control Black?", game.players[1].isBlack)
     
     # game.addPlayer(MiniMax_Control(5,10))
     
@@ -47,9 +48,9 @@ def main(size, sleep=0, print_ = True, moves_list=None):
     # game.addPlayer(User())
     # game.addPlayer(User())
     
-    # moves_list_1, moves_list_2 = Replay.transformMovesList(moves_list, True)
-    # game.addPlayer(Replay(moves_list_1), True) 
-    # game.addPlayer(Replay(moves_list_2))
+    moves_list_1, moves_list_2 = Replay.transformMovesList(moves_list, True)
+    game.addPlayer(Replay(moves_list_1), True) 
+    game.addPlayer(Replay(moves_list_2))
     
     if print_:
         print(game.board)
@@ -112,9 +113,9 @@ def main(size, sleep=0, print_ = True, moves_list=None):
                 print(game.board)
                 # print(game.board.current_hash)
                 game.printBothTerritories()
-                # update_plot(game.board.tension_map)
+                # update_plot(game.board.tension_map)    
     
-    
+    # game.board.print_method_times()
     
     #return result
     if game.board.territory_counts[game.players[1]] >  game.board.territory_counts[game.players[0]]:
@@ -124,9 +125,11 @@ def main(size, sleep=0, print_ = True, moves_list=None):
     else:
         return 0 #tie
     
+    
+    
 def speed_test(size, repeats):
     total_moves_made = 0
-    moves = testingMoves
+    moves = testingMoves()
     
     start = time.time()
     for i in range(repeats):
@@ -160,8 +163,22 @@ def bot_battle(size, games):
 if __name__ == '__main__':  
     # speed_test(13,10)
     # bot_battle(5,1)
-    # main(13, 0, True, Moves_986551)
+    test = testingMoves()
+    # speed_test(13, 2)
+    start = time.time()
+    for i in range(1):
+        main(13, 0, False, test.moves_list[0])
+    # main(13, 0, False, test.moves_list[0])
+    # main(13, 0, False, test.moves_list[0])
+    # main(13, 0, False, test.moves_list[0])
+    # main(13, 0, False, test.moves_list[0])
+    stop = time.time()
+    print("Time: ",(stop-start))
     
-    main(5)
+    
+    
+    
+    
+    # main(5)
     
 
